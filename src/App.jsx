@@ -24,7 +24,7 @@ export default function App() {
 
       <footer className="footer">
         <div className="footer-inner">
-          Gestión de Prácticas • {new Date().getFullYear()} • Desarrollado por Beimone Web Services
+          Gestión de Prácticas • {new Date().getFullYear()} • Desarrollado por BeiMone Web Services
         </div>
       </footer>
     </BrowserRouter>

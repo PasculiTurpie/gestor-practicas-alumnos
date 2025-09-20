@@ -417,7 +417,8 @@ body {
   margin   : 0 auto;
   padding  : 12px 16px;
   color    : var(--muted);
-  font-size: 14px
+  font-size: 14px;
+  text-align: center;
 }
 
 /* Controles tabla: búsqueda + paginación */
