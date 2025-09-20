@@ -65,6 +65,3 @@ Ofrece una interfaz sencilla y moderna para interactuar con la API del backend.
 - Historial de etapas guardado automáticamente.
 
 ---
-
-## 📂 Estructura del proyecto
-
