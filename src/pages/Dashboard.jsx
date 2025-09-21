@@ -1,8 +1,11 @@
+// src/pages/Dashboard.jsx
 import { useEffect, useMemo, useState } from "react";
-import { listPractices } from "../api/practices";
+import { listPractices, getPracticeStats } from "../api/practices";
 import SkeletonTable from "../components/SkeletonTable";
 import useAsync from "../hooks/useAsync";
 import { StageIcon } from "../components/Icons";
+import InlineSpinner from "../components/InlineSpinner";
+import { download } from "../utils/download";
 
 const STAGES = [
   "RECOPILACION_Y_CARPETA",
@@ -16,66 +19,182 @@ const STAGES = [
 ];
 
 export default function Dashboard() {
-  const [items, setItems] = useState([]);
-  const { loading, run } = useAsync();
-
-  const fetchData = () => run(async () => {
-    // últimas prácticas actualizadas (puedes ajustar el sort en tu backend)
-    const r = await listPractices({ limit: 10 });
-    setItems(r.items);
+  const [latest, setLatest] = useState([]);
+  const [stats, setStats] = useState({
+    totals: { total: 0, open: 0, closed: 0 },
+    byStage: [],
+    byCenterTop5: [],
+    range: { from: null, to: null },
   });
 
-  useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, []);
+  // filtros de rango (opcional)
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
 
-  // Conteo por etapa (sobre las últimas 10; si quieres global, crea endpoint de agregación)
-  const counts = useMemo(() => {
-    const acc = Object.fromEntries(STAGES.map(s => [s, 0]));
-    for (const p of items) acc[p.currentStage] = (acc[p.currentStage] || 0) + 1;
-    return acc;
-  }, [items]);
+  const { loading: loadingLatest, run: runLatest } = useAsync();
+  const { loading: loadingStats, run: runStats } = useAsync();
 
-  const total = items.length || 1;
+  const fetchLatest = () =>
+    runLatest(async () => {
+      const r = await listPractices({ limit: 10 });
+      setLatest(r.items || []);
+    });
+
+  const fetchStats = () =>
+    runStats(async () => {
+      const params = {};
+      if (from) params.from = from;
+      if (to) params.to = to;
+      const s = await getPracticeStats(params);
+      setStats(s);
+    });
+
+  useEffect(() => {
+    fetchLatest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to]);
+
+  // Mapa de counts por etapa (global)
+  const countsGlobal = useMemo(() => {
+    const map = Object.fromEntries(STAGES.map((s) => [s, 0]));
+    for (const row of stats.byStage || []) map[row.stage] = row.count;
+    return map;
+  }, [stats]);
+
+  const totalGlobal = stats?.totals?.total || 1;
+
+  // ---- Export CSV helpers ----
+  const API = import.meta.env.VITE_API_URL;
+  const buildQs = () => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    return params.toString();
+  };
+  const exportByStage = () => {
+    const qs = buildQs();
+    const url = `${API}/practices/stats/export?dataset=byStage${qs ? `&${qs}` : ""}`;
+    download(url, `practicas_byStage${qs ? `_${qs.replace(/=|&/g, "-")}` : ""}.csv`);
+  };
+  const exportTopCenters = () => {
+    const qs = buildQs();
+    const url = `${API}/practices/stats/export?dataset=byCenterTop5${qs ? `&${qs}` : ""}`;
+    download(url, `practicas_topCenters${qs ? `_${qs.replace(/=|&/g, "-")}` : ""}.csv`);
+  };
+  const exportTotals = () => {
+    const qs = buildQs();
+    const url = `${API}/practices/stats/export?dataset=totals${qs ? `&${qs}` : ""}`;
+    download(url, `practicas_totals${qs ? `_${qs.replace(/=|&/g, "-")}` : ""}.csv`);
+  };
 
   return (
     <section>
+      {/* Panel superior: filtros + totales + por etapa + top centros */}
       <div className="card">
         <h1 className="h1">Dashboard</h1>
-        <p className="subtle">Resumen rápido de las prácticas más recientes</p>
+        <p className="subtle">Estadísticas globales (filtrables por fecha)</p>
 
-        {/* Tarjetas de estado */}
+        {/* Filtros de fecha y export */}
+        <div className="row mt-3" style={{ gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+          <div>
+            <label className="subtle">Desde</label>
+            <input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </div>
+          <div>
+            <label className="subtle">Hasta</label>
+            <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
+          {loadingStats && <InlineSpinner />}
+
+          <div className="row" style={{ gap: 8, marginLeft: "auto" }}>
+            <button className="btn btn-ghost" onClick={exportByStage}>Exportar etapas CSV</button>
+            <button className="btn btn-ghost" onClick={exportTopCenters}>Exportar centros CSV</button>
+            <button className="btn btn-ghost" onClick={exportTotals}>Exportar totales CSV</button>
+          </div>
+        </div>
+
+        {/* Totales */}
         <div className="row mt-3" style={{ flexWrap: "wrap", gap: 12 }}>
-          {STAGES.map(stage => (
+          <div className="card" style={{ minWidth: 220 }}>
+            <strong style={{ fontSize: 20 }}>{stats.totals.total}</strong>
+            <div className="subtle">Total prácticas</div>
+          </div>
+          <div className="card" style={{ minWidth: 220 }}>
+            <strong style={{ fontSize: 20 }}>{stats.totals.open}</strong>
+            <div className="subtle">En curso</div>
+          </div>
+          <div className="card" style={{ minWidth: 220 }}>
+            <strong style={{ fontSize: 20 }}>{stats.totals.closed}</strong>
+            <div className="subtle">Cerradas</div>
+          </div>
+        </div>
+
+        {/* Conteo por etapa (global) */}
+        <div className="row mt-3" style={{ flexWrap: "wrap", gap: 12 }}>
+          {STAGES.map((stage) => (
             <div key={stage} className="card" style={{ minWidth: 220 }}>
               <div className="row" style={{ justifyContent: "space-between" }}>
-                <div className="row">
-                  <span className={`badge stage-${stage}`}>
-                    <StageIcon stage={stage} />
-                    {stage.replaceAll("_", " ")}
-                  </span>
-                </div>
-                <strong style={{ fontSize: 20 }}>
-                  {counts[stage] || 0}
-                </strong>
+                <span className={`badge stage-${stage}`}>
+                  <StageIcon stage={stage} />
+                  {stage.replaceAll("_", " ")}
+                </span>
+                <strong style={{ fontSize: 20 }}>{countsGlobal[stage] || 0}</strong>
               </div>
               <div className="subtle mt-2">
-                {(Math.round(((counts[stage] || 0) / total) * 100) || 0)}%
+                {(Math.round(((countsGlobal[stage] || 0) / (totalGlobal || 1)) * 100) || 0)}%
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Top 5 centros */}
+        <div className="row mt-3" style={{ flexWrap: "wrap", gap: 12 }}>
+          <div className="card" style={{ width: "100%" }}>
+            <h3 className="h2">Top 5 Centros</h3>
+            <table className="table mt-3">
+              <thead>
+                <tr>
+                  <th>Centro</th>
+                  <th>Cantidad</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(stats.byCenterTop5 || []).map(({ center, count }) => (
+                  <tr key={center || "N/A"}>
+                    <td>{center || "N/A"}</td>
+                    <td>{count}</td>
+                  </tr>
+                ))}
+                {(stats.byCenterTop5 || []).length === 0 && (
+                  <tr>
+                    <td colSpan={2} className="subtle" style={{ padding: 12 }}>
+                      Sin datos
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
       <div className="space"></div>
 
+      {/* Últimas prácticas actualizadas */}
       <div className="card">
         <h2 className="h2">Últimas prácticas actualizadas</h2>
         <p className="subtle">Las 10 más recientes</p>
 
-        {loading ? (
+        {loadingLatest ? (
           <SkeletonTable rows={6} />
         ) : (
           <ul className="list mt-3">
-            {items.map(p => (
+            {latest.map((p) => (
               <li key={p._id} className="list-item">
                 <div>
                   <strong>{p.studentId?.fullName}</strong>
@@ -87,7 +206,7 @@ export default function Dashboard() {
                 </span>
               </li>
             ))}
-            {items.length === 0 && <li className="subtle">No hay prácticas registradas aún.</li>}
+            {latest.length === 0 && <li className="subtle">No hay prácticas registradas aún.</li>}
           </ul>
         )}
       </div>
