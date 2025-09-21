@@ -5,7 +5,8 @@ import StudentsTable from "../components/StudentsTable";
 import TableControls from "../components/TableControls";
 import EditStudentModal from "../components/EditStudentModal";
 import EditStageFromStudentModal from "../components/EditStageFromStudentModal";
-import useCleanRut from "../hooks/useCleanRut";
+import SkeletonTable from "../components/SkeletonTable";
+import useAsync from "../hooks/useAsync";
 
 export default function Students() {
   const [items, setItems] = useState([]);
@@ -17,18 +18,13 @@ export default function Students() {
   const [sortDir, setSortDir] = useState("asc");
   const [editing, setEditing] = useState(null);
   const [editingStage, setEditingStage] = useState(null);
-  const { cleanRutInList } = useCleanRut();
 
+  const { loading, run } = useAsync();
 
-  const handleExport = () => {
-    const cleanItems = cleanRutInList(items, "rut");
-    exportCsv("alumnos.csv", cleanItems);
-  };
-
-  const reload = () =>
-    listStudents({ page, limit, q: q || undefined }).then(r => {
-      setItems(r.items); setPages(r.pages || 1);
-    });
+  const reload = () => run(async () => {
+    const r = await listStudents({ page, limit, q: q || undefined });
+    setItems(r.items); setPages(r.pages || 1);
+  });
 
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, [page, limit, q]);
 
@@ -48,8 +44,7 @@ export default function Students() {
   const handleSort = (col, dir) => { setSortBy(col); setSortDir(dir); };
 
   const handleDelete = async (s) => {
-    const ok = window.confirm(`¿Eliminar al alumno "${s.fullName}" (NRC ${s.nrcCode})?`);
-    if (!ok) return;
+    if (!confirm(`¿Eliminar al alumno "${s.fullName}" (NRC ${s.nrcCode})?`)) return;
     await deleteStudent(s._id);
     if (sorted.length === 1 && page > 1) setPage(page - 1);
     else reload();
@@ -72,20 +67,23 @@ export default function Students() {
           onSearchChange={(v) => { setPage(1); setQ(v); }}
           page={page}
           pages={pages}
-          onPageChange={setPage}
+          onPageChange={loading ? () => { } : setPage}
           limit={limit}
-          onLimitChange={(n) => { setPage(1); setLimit(n); }}
-          onExport={handleExport}
+          onLimitChange={(n) => { if (!loading) { setPage(1); setLimit(n); } }}
         />
-        <StudentsTable
-          data={sorted}
-          sortBy={sortBy}
-          sortDir={sortDir}
-          onSort={handleSort}
-          onEdit={setEditing}
-          onDelete={handleDelete}
-          onEditStage={setEditingStage}
-        />
+        {loading ? (
+          <SkeletonTable rows={6} />
+        ) : (
+          <StudentsTable
+            data={sorted}
+            sortBy={sortBy}
+            sortDir={sortDir}
+            onSort={handleSort}
+            onEdit={setEditing}
+            onDelete={handleDelete}
+            onEditStage={setEditingStage}
+          />
+        )}
       </div>
 
       {editing && (
@@ -100,7 +98,7 @@ export default function Students() {
         <EditStageFromStudentModal
           student={editingStage}
           onClose={() => setEditingStage(null)}
-          onAdvanced={() => { setEditingStage(null); /* refrescar tablas si quieres */ }}
+          onAdvanced={() => { setEditingStage(null); reload(); }}
         />
       )}
     </section>

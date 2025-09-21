@@ -1,40 +1,50 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { listPractices } from "../api/practices";
 import AdvanceStageModal from "../components/AdvanceStageModal";
 import TableControls from "../components/TableControls";
 import SortableTh from "../components/SortableTh";
+import { StageIcon } from "../components/Icons";
+import SkeletonTable from "../components/SkeletonTable";
+import useAsync from "../hooks/useAsync";
 import { exportCsv } from "../utils/exportsCsv.js";
-import { StageIcon } from "../components/Icons.jsx";
-
-
 
 const STAGES = [
-  "RECOPILACION_Y_CARPETA", "ENTREGA_CARPETA", "ENCUESTA_CP",
-  "ENVIO_PORTAFOLIO_INSTRUCCIONES", "SUPERVISION_PRACTICAS",
-  "ENVIO_BORRADOR_PORTAFOLIO", "SUBIR_PORTAFOLIO_AULA", "NOTA_FINAL_CIERRE",
+  "RECOPILACION_Y_CARPETA",
+  "ENTREGA_CARPETA",
+  "ENCUESTA_CP",
+  "ENVIO_PORTAFOLIO_INSTRUCCIONES",
+  "SUPERVISION_PRACTICAS",
+  "ENVIO_BORRADOR_PORTAFOLIO",
+  "SUBIR_PORTAFOLIO_AULA",
+  "NOTA_FINAL_CIERRE",
 ];
 
 export default function Practices() {
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
+
+  // controles
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [limit, setLimit] = useState(20);
   const [stage, setStage] = useState("");
   const [q, setQ] = useState("");
 
-  // sort state: por defecto por alumno
+  // sort
   const [sortBy, setSortBy] = useState("student"); // student | center | stage
   const [sortDir, setSortDir] = useState("asc");
 
-  const fetchData = () =>
-    listPractices({ page, limit, stage: stage || undefined }).then(r => {
-      setItems(r.items); setPages(r.pages || 1);
-    });
+  const { loading, run } = useAsync();
+
+  const fetchData = () => run(async () => {
+    const r = await listPractices({ page, limit, stage: stage || undefined });
+    setItems(r.items);
+    setPages(r.pages || 1);
+  });
 
   useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [page, limit, stage]);
 
-  // Filtro de texto en cliente
+  // Filtro en cliente por texto (alumno/centro)
   const filtered = useMemo(() => {
     if (!q.trim()) return items;
     const ql = q.toLowerCase();
@@ -64,6 +74,15 @@ export default function Practices() {
 
   const handleSort = (col, dir) => { setSortBy(col); setSortDir(dir); };
 
+  const handleExport = () => {
+    const rows = sorted.map(p => ({
+      Alumno: p.studentId?.fullName ?? "",
+      Centro: p.studentId?.practiceCenter ?? "",
+      Etapa: p.currentStage?.replaceAll("_", " ") ?? "",
+    }));
+    exportCsv("practicas.csv", rows);
+  };
+
   return (
     <section className="card">
       <h1 className="h1">Prácticas</h1>
@@ -74,9 +93,9 @@ export default function Practices() {
         onSearchChange={setQ}
         page={page}
         pages={pages}
-        onPageChange={setPage}
+        onPageChange={loading ? () => { } : setPage}
         limit={limit}
-        onLimitChange={(n) => { setPage(1); setLimit(n); }}
+        onLimitChange={(n) => { if (!loading) { setPage(1); setLimit(n); } }}
         rightSlot={
           <select className="select-sm" value={stage} onChange={(e) => { setPage(1); setStage(e.target.value); }}>
             <option value="">Todas las etapas</option>
@@ -84,44 +103,43 @@ export default function Practices() {
           </select>
         }
         placeholder="Buscar por alumno o centro..."
-        onExport={() => {
-          const rows = sorted.map(p => ({
-            Alumno: p.studentId?.fullName,
-            Centro: p.studentId?.practiceCenter,
-            Etapa: p.currentStage.replaceAll("_", " "),
-          }));
-          exportCsv("practicas.csv", rows);
-        }}
+        onExport={handleExport}
       />
 
-      <table className="table mt-3">
-        <thead>
-          <tr>
-            <SortableTh label="Alumno" column="student" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            <SortableTh label="Centro" column="center" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            <SortableTh label="Etapa actual" column="stage" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map(p => (
-            <tr key={p._id}>
-              <td>{p.studentId?.fullName}</td>
-              <td>{p.studentId?.practiceCenter}</td>
-              <td>
-                <span className={`badge stage-${p.currentStage}`}>
-                  <StageIcon stage={p.currentStage} />
-                  {p.currentStage.replaceAll("_", " ")}
-                </span>
-              </td>
-              <td><button className="btn btn-primary" onClick={() => setSelected(p)}>Avanzar</button></td>
+      {loading ? (
+        <SkeletonTable rows={6} />
+      ) : (
+        <table className="table mt-3">
+          <thead>
+            <tr>
+              <SortableTh label="Alumno" column="student" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortableTh label="Centro" column="center" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortableTh label="Etapa actual" column="stage" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <th>Acciones</th>
             </tr>
-          ))}
-          {sorted.length === 0 && (
-            <tr><td colSpan={4} className="subtle" style={{ padding: 12 }}>Sin resultados</td></tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sorted.map(p => (
+              <tr key={p._id}>
+                <td>{p.studentId?.fullName}</td>
+                <td>{p.studentId?.practiceCenter}</td>
+                <td>
+                  <span className={`badge stage-${p.currentStage}`}>
+                    <StageIcon stage={p.currentStage} />
+                    {p.currentStage.replaceAll("_", " ")}
+                  </span>
+                </td>
+                <td>
+                  <button className="btn btn-primary" onClick={() => setSelected(p)}>Avanzar</button>
+                </td>
+              </tr>
+            ))}
+            {sorted.length === 0 && (
+              <tr><td colSpan={4} className="subtle" style={{ padding: 12 }}>Sin resultados</td></tr>
+            )}
+          </tbody>
+        </table>
+      )}
 
       {selected && (
         <AdvanceStageModal
