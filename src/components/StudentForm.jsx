@@ -28,7 +28,7 @@ export default function StudentForm({ onCreated }) {
       <div>
         <input
           className="input"
-          placeholder="RUT (12.345.678-9)"
+          placeholder="RUT sin puntos ni guión (123456789)"
           {...register("rut", {
             required: "El RUT es obligatorio",
             validate: (v) => isValidRut(v) || "RUT inválido",
