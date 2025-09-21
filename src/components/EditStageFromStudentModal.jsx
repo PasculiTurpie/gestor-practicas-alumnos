@@ -1,72 +1,86 @@
-import { useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { updateStudent } from "../api/students";
-import useRut from "../hooks/useCleanRut.js";
+import { useEffect, useState } from "react";
+import { getPracticeByStudent, advanceStage } from "../api/practices";
 
-export default function EditStudentModal({ student, onClose, onUpdated }) {
-  const { cleanRut, isValidRut /*, formatRut*/ } = useRut();
-  const { register, handleSubmit, reset, formState: { errors }, setValue, watch } = useForm();
-  const rutValue = watch("rut");
+const STAGES = [
+  "RECOPILACION_Y_CARPETA",
+  "ENTREGA_CARPETA",
+  "ENCUESTA_CP",
+  "ENVIO_PORTAFOLIO_INSTRUCCIONES",
+  "SUPERVISION_PRACTICAS",
+  "ENVIO_BORRADOR_PORTAFOLIO",
+  "SUBIR_PORTAFOLIO_AULA",
+  "NOTA_FINAL_CIERRE",
+];
+
+export default function EditStageFromStudentModal({ student, onClose, onAdvanced }) {
+  const [practice, setPractice] = useState(null);
+  const [nextStage, setNextStage] = useState(STAGES[0]);
+  const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (student) {
-      reset({
-        fullName: student.fullName || "",
-        rut: student.rut || "",
-        institutionalEmail: student.institutionalEmail || "",
-        personalEmail: student.personalEmail || "",
-        nrcCode: student.nrcCode || "",
-        phone: student.phone || "",
-        practiceCenter: student.practiceCenter || "",
-        observations: student.observations || "",
-      });
-    }
-  }, [student, reset]);
+    let ignore = false;
+    (async () => {
+      try {
+        const p = await getPracticeByStudent(student._id);
+        if (ignore) return;
+        setPractice(p);
+        setNextStage(p.currentStage || STAGES[0]);
+      } catch (e) {
+        // si no hay práctica creada
+        setPractice(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
+    return () => { ignore = true; };
+  }, [student]);
 
-  const onSubmit = async (values) => {
-    values.rut = cleanRut(values.rut); // normaliza antes de enviar
-    await updateStudent(student._id, values);
-    onUpdated?.();
+  const submit = async () => {
+    if (!practice?._id) return;
+    await advanceStage(practice._id, { nextStage, notes });
+    onAdvanced?.();
   };
-
-  if (!student) return null;
 
   return (
     <div className="modal" role="dialog" aria-modal="true">
       <div className="modal-card">
         <div className="modal-header">
-          <h4 className="h2">Editar alumno</h4>
+          <h4 className="h2">Etapa de práctica — {student.fullName}</h4>
           <button className="btn btn-ghost" onClick={onClose}>Cerrar</button>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="form mt-3">
-          <input className="input" placeholder="Nombre completo" {...register("fullName", { required: "El nombre es obligatorio" })} />
+        {loading ? (
+          <p className="subtle">Cargando...</p>
+        ) : !practice ? (
+          <p className="subtle">Este alumno aún no tiene práctica creada.</p>
+        ) : (
+          <>
+            <div className="mt-3">
+              <div className="subtle">Etapa actual</div>
+              <div style={{ marginTop: 6, fontWeight: 700 }}>
+                {practice.currentStage.replaceAll("_", " ")}
+              </div>
+            </div>
 
-          <div>
-            <input
-              className="input"
-              placeholder="RUT (12.345.678-9)"
-              {...register("rut", {
-                required: "El RUT es obligatorio",
-                validate: (v) => isValidRut(v) || "RUT inválido",
-              })}
-            // onBlur={() => setValue("rut", formatRut(rutValue))}
-            />
-            {errors.rut && <div className="subtle" style={{ color: "#dc2626" }}>{errors.rut.message}</div>}
-          </div>
+            <div className="mt-3">
+              <label className="subtle">Nueva etapa</label>
+              <select className="select mt-2" value={nextStage} onChange={e => setNextStage(e.target.value)}>
+                {STAGES.map(s => <option key={s} value={s}>{s.replaceAll("_", " ")}</option>)}
+              </select>
+            </div>
 
-          <input className="input" placeholder="Correo institucional" {...register("institutionalEmail", { required: "Correo institucional requerido" })} />
-          <input className="input" placeholder="Correo personal" {...register("personalEmail")} />
-          <input className="input" placeholder="Código NRC" {...register("nrcCode", { required: "NRC requerido" })} />
-          <input className="input" placeholder="Celular" {...register("phone", { required: "Celular requerido" })} />
-          <input className="input" placeholder="Centro de prácticas" {...register("practiceCenter", { required: "Centro requerido" })} />
-          <input className="input" placeholder="Observaciones" {...register("observations")} />
+            <div className="mt-3">
+              <label className="subtle">Notas (opcional)</label>
+              <textarea className="textarea mt-2" placeholder="Notas" value={notes} onChange={e => setNotes(e.target.value)} />
+            </div>
 
-          <div className="row span-2" style={{ justifyContent: "flex-end" }}>
-            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn btn-primary">Guardar cambios</button>
-          </div>
-        </form>
+            <div className="modal-actions">
+              <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+              <button className="btn btn-primary" onClick={submit}>Guardar</button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
