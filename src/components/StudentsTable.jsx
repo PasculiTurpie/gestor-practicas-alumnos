@@ -20,7 +20,7 @@ export default function StudentsTable({ data = [], sortBy, sortDir, onSort, onEd
       <tbody>
         {data.map(s => (
           <tr key={s._id}>
-            <td>{s.fullName}</td>
+            <td>{s.fullName.toUpperCase()}</td>
             <td>{cleanRut(s.rut)}</td>
             <td>{s.nrcCode}</td>
             <td>{s.institutionalEmail}</td>

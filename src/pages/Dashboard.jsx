@@ -197,7 +197,7 @@ export default function Dashboard() {
             {latest.map((p) => (
               <li key={p._id} className="list-item">
                 <div>
-                  <strong>{p.studentId?.fullName}</strong>
+                  <strong>{p.studentId?.fullName.toUpperCase()}</strong>
                   <div className="subtle">{p.studentId?.practiceCenter}</div>
                 </div>
                 <span className={`badge stage-${p.currentStage}`}>

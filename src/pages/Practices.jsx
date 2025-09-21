@@ -121,7 +121,7 @@ export default function Practices() {
           <tbody>
             {sorted.map(p => (
               <tr key={p._id}>
-                <td>{p.studentId?.fullName}</td>
+                <td>{p.studentId?.fullName.toUpperCase()}</td>
                 <td>{p.studentId?.practiceCenter}</td>
                 <td>
                   <span className={`badge stage-${p.currentStage}`}>
