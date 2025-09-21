@@ -1,9 +1,11 @@
-import { useEffect, useState, useMemo } from "react";
-import { listStudents } from "../api/students";
+import { useEffect, useMemo, useState } from "react";
+import { listStudents, deleteStudent } from "../api/students";
 import StudentForm from "../components/StudentForm";
 import StudentsTable from "../components/StudentsTable";
 import TableControls from "../components/TableControls";
-import { exportCsv } from "../utils/exportsCsv.js";
+import EditStudentModal from "../components/EditStudentModal";
+import EditStageFromStudentModal from "../components/EditStageFromStudentModal";
+import useCleanRut from "../hooks/useCleanRut";
 
 export default function Students() {
   const [items, setItems] = useState([]);
@@ -11,10 +13,17 @@ export default function Students() {
   const [pages, setPages] = useState(1);
   const [limit, setLimit] = useState(20);
   const [q, setQ] = useState("");
-
-  // estado de orden
-  const [sortBy, setSortBy] = useState("fullName"); // fullName | rut | nrcCode | practiceCenter | phone | institutionalEmail
+  const [sortBy, setSortBy] = useState("fullName");
   const [sortDir, setSortDir] = useState("asc");
+  const [editing, setEditing] = useState(null);
+  const [editingStage, setEditingStage] = useState(null);
+  const { cleanRutInList } = useCleanRut();
+
+
+  const handleExport = () => {
+    const cleanItems = cleanRutInList(items, "rut");
+    exportCsv("alumnos.csv", cleanItems);
+  };
 
   const reload = () =>
     listStudents({ page, limit, q: q || undefined }).then(r => {
@@ -38,6 +47,14 @@ export default function Students() {
 
   const handleSort = (col, dir) => { setSortBy(col); setSortDir(dir); };
 
+  const handleDelete = async (s) => {
+    const ok = window.confirm(`¿Eliminar al alumno "${s.fullName}" (NRC ${s.nrcCode})?`);
+    if (!ok) return;
+    await deleteStudent(s._id);
+    if (sorted.length === 1 && page > 1) setPage(page - 1);
+    else reload();
+  };
+
   return (
     <section>
       <div className="card">
@@ -58,25 +75,34 @@ export default function Students() {
           onPageChange={setPage}
           limit={limit}
           onLimitChange={(n) => { setPage(1); setLimit(n); }}
-          onExport={() => {
-            const rows = sorted.map(s => ({
-              Nombre: s.fullName,
-              RUT: s.rut,
-              NRC: s.nrcCode,
-              "Correo inst.": s.institutionalEmail,
-              Celular: s.phone,
-              Centro: s.practiceCenter,
-            }));
-            exportCsv("alumnos.csv", rows);
-          }}
+          onExport={handleExport}
         />
         <StudentsTable
           data={sorted}
           sortBy={sortBy}
           sortDir={sortDir}
           onSort={handleSort}
+          onEdit={setEditing}
+          onDelete={handleDelete}
+          onEditStage={setEditingStage}
         />
       </div>
+
+      {editing && (
+        <EditStudentModal
+          student={editing}
+          onClose={() => setEditing(null)}
+          onUpdated={() => { setEditing(null); reload(); }}
+        />
+      )}
+
+      {editingStage && (
+        <EditStageFromStudentModal
+          student={editingStage}
+          onClose={() => setEditingStage(null)}
+          onAdvanced={() => { setEditingStage(null); /* refrescar tablas si quieres */ }}
+        />
+      )}
     </section>
   );
 }
